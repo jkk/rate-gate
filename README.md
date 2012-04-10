@@ -8,7 +8,7 @@ Inspired by http://www.pennedobjects.com/2010/10/better-rate-limiting-with-dot-n
 
 Leiningen coordinate:
 
-    [rate-gate "1.0.0"]
+    [rate-gate "1.1.0"]
 
 Basic usage:
 
