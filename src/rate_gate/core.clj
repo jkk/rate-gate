@@ -67,11 +67,13 @@
   will be attached to the function's metadata in the :rate-gate slot."
   [f n span-ms]
   (let [gate (rate-gate n span-ms)]
-    ^{:rate-gate gate} (fn [& args]
-                         (tarry gate)
-                         (apply f args))))
+    ^{:rate-gates (into [gate] (:rate-gates (meta f)))}
+    (fn [& args]
+      (tarry gate)
+      (apply f args))))
 
 (defn un-limit
   "Clears the rate-gate for a function previously passed to rate-limit"
   [f]
-  (shutdown (:rate-gate (meta f))))
+  (doseq [gate (:rate-gates (meta f))]
+    (shutdown gate)))
