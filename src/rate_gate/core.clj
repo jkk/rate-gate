@@ -12,16 +12,14 @@
     (str "#<rate-gate: " n " per " span-ms " ms>"))
   clojure.lang.IDeref
   (deref [_]
-    (when @done
-      (throw (IllegalStateException. "Deref not allowed after shutdown")))
-    (.acquire semaphore)
-    (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000))))
+    (when-not @done
+      (.acquire semaphore)
+      (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
   clojure.lang.IBlockingDeref
   (deref [_ timeout-ms timeout-val]
-    (when @done
-      (throw (IllegalStateException. "Gate is closed")))
-    (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
-    (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000))))
+    (when-not @done
+      (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
+      (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
   clojure.lang.IFn
   (invoke [_]
     (reset! done true)))
@@ -64,3 +62,8 @@
     ^{:rate-gate gate} (fn [& args]
                          @gate
                          (apply f args))))
+
+(defn un-limit
+  "Clears the rate-gate for a function previously passed to rate-limit"
+  [f]
+  ((:rate-gate (meta f))))
