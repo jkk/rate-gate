@@ -2,27 +2,35 @@
   (:import (java.util.concurrent Semaphore LinkedBlockingQueue TimeUnit)))
 
 (defprotocol PRateGate
-  (open? [this]))
+  (open? [this])
+  (tarry [this] [this timeout-ms timeout-val])
+  (shutdown [this]))
 
 (deftype RateGate [n span-ms semaphore exit-times done thread]
   PRateGate
   (open? [_]
     (pos? (.availablePermits semaphore)))
-  (toString [this]
-    (str "#<rate-gate: " n " per " span-ms " ms>"))
-  clojure.lang.IDeref
-  (deref [_]
+  (tarry [_]
     (when-not @done
       (.acquire semaphore)
       (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
-  clojure.lang.IBlockingDeref
-  (deref [_ timeout-ms timeout-val]
+  (tarry [_ timeout-ms timeout-val]
     (when-not @done
       (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
       (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
+  (shutdown [_]
+    (reset! done true))
+  (toString [this]
+    (str "#<rate-gate: " n " per " span-ms " ms>"))
+  clojure.lang.IDeref
+  (deref [this]
+    (tarry this))
+  clojure.lang.IBlockingDeref
+  (deref [this timeout-ms timeout-val]
+    (tarry this timeout-ms timeout-val))
   clojure.lang.IFn
-  (invoke [_]
-    (reset! done true)))
+  (invoke [this]
+    (shutdown this)))
 
 (defmethod print-method RateGate [g w]
   (.write w (str g)))
@@ -60,10 +68,10 @@
   [f n span-ms]
   (let [gate (rate-gate n span-ms)]
     ^{:rate-gate gate} (fn [& args]
-                         @gate
+                         (tarry gate)
                          (apply f args))))
 
 (defn un-limit
   "Clears the rate-gate for a function previously passed to rate-limit"
   [f]
-  ((:rate-gate (meta f))))
+  (shutdown (:rate-gate (meta f))))
