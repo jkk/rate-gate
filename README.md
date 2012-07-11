@@ -8,30 +8,41 @@ Inspired by http://www.pennedobjects.com/2010/10/better-rate-limiting-with-dot-n
 
 Leiningen coordinate:
 
-    [rate-gate "1.1.0"]
+```clj
+[rate-gate "1.2.0"]
+```
 
 Basic usage:
 
-    (use '[rate-gate.core :only [rate-gate tarry close rate-limit timespan]])
+```clj
+(use '[rate-gate.core :only [rate-gate tarry shutdown rate-limit un-limit]])
 
-    ;; Create a gate that allows two actions every second. Creating a gate
-    ;; spawns a management thread to keep track of things.
-    (let [gate (rate-gate 2 (timespan 1 :second))]
-      (dotimes [_ 10]
-        (tarry gate) ;blocks until ready
-        (println "boop"))
-      ;; Shuts down the management thread
-      (close gate))
+;; Create a gate that allows two actions every second. Creating a gate
+;; spawns a daemon thread to keep track of things.
+(let [gate (rate-gate 2 1000)]
+  (dotimes [_ 10]
+    (tarry gate) ;blocks until ready
+    (println "boop"))
+  ;; Shuts down the management thread
+  (shutdown gate))
 
-    ;; f can be called at most once per second and 8 times per 10 seconds.
-    ;; Note that with rate-limit, management threads are never shut down.
-    (def f (-> #(println "boop")
-               (rate-limit 1 (timespan 1 :second))
-               (rate-limit 8 (timespan 10 :seconds))))
-    (dotimes [_ 10] (time (f)))
+;; f can be called at most once per second and 8 times per 10 seconds.
+(def f (-> #(println "boop")
+           (rate-limit 1 1000)
+           (rate-limit 8 10000)))
+(dotimes [_ 10] (time (f)))
+
+;; Rate gates are attached to the function's metadata.
+(:rate-gates (meta f))
+;; => [#<rate-gate: 8 per 10000 ms> #<rate-gate: 1 per 1000 ms>]    
+
+;; Rate limits can be removed from functions
+(un-limit f)
+(dotimes [_ 10] (time (f)))
+```
 
 ## License
 
-Copyright (C) 2011 Justin Kramer
+Copyright (C) 2011-2012 Justin Kramer
 
 Distributed under the Eclipse Public License, the same as Clojure.
