@@ -57,7 +57,8 @@
                           (let [delay (if-let [exit-time (.peek exit-times)]
                                         (/ (- exit-time (System/nanoTime)) 1000000)
                                         span-ms)]
-                            (Thread/sleep delay)))))
+                            (when (pos? delay)
+                              (Thread/sleep delay))))))
                  (.setDaemon true)
                  (.start))]
     (RateGate. n span-ms semaphore exit-times done thread)))
