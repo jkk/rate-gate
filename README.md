@@ -9,7 +9,7 @@ Inspired by http://www.pennedobjects.com/2010/10/better-rate-limiting-with-dot-n
 Leiningen coordinate:
 
 ```clj
-[rate-gate "1.3.0"]
+[rate-gate "1.3.1"]
 ```
 
 Basic usage:
