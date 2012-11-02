@@ -64,8 +64,8 @@
     (RateGate. n span-ms semaphore exit-times done thread)))
 
 (defn rate-limit
-  "Rate-limits a given function with a rate-gate. The rate-gate object
-  will be attached to the function's metadata in the :rate-gate slot."
+  "Rate-limits the given function with a rate-gate. The rate-gate object
+  will be attached to the function's metadata in the :rate-gates slot."
   [f n span-ms]
   (let [gate (rate-gate n span-ms)]
     ^{:rate-gates (into [gate] (:rate-gates (meta f)))}
@@ -74,7 +74,7 @@
       (apply f args))))
 
 (defn un-limit
-  "Clears the rate-gate for a function previously passed to rate-limit"
+  "Clears any rate-gates from a function previously passed to rate-limit"
   [f]
   (doseq [gate (:rate-gates (meta f))]
     (shutdown gate)))
