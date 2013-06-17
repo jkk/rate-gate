@@ -6,18 +6,22 @@
   (tarry [this] [this timeout-ms timeout-val])
   (shutdown [this]))
 
-(deftype RateGate [n span-ms semaphore exit-times done thread]
+(deftype RateGate [n span-ms semaphore done]
   PRateGate
   (open? [_]
     (pos? (.availablePermits semaphore)))
   (tarry [_]
     (when-not @done
       (.acquire semaphore)
-      (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
+      (future
+        (Thread/sleep span-ms)
+        (.release semaphore))))
   (tarry [_ timeout-ms timeout-val]
     (when-not @done
-      (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
-      (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
+      (if (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
+        (future
+          (Thread/sleep span-ms)
+          (.release semaphore)))))
   (shutdown [_]
     (reset! done true))
   (toString [this]
@@ -38,30 +42,11 @@
 (defn rate-gate
   "Creates a rate-gate object which can be used to limit the rate at which
   actions occur. Calling deref on the object will block until things are
-  allowed to proceed (unless a timeout is also passed to deref). Spawns a
-  management thread which can be shut down by calling the object with no
-  arguments."
+  allowed to proceed (unless a timeout is also passed to deref)."
   [n span-ms]
   (let [semaphore (Semaphore. n true)
-        exit-times (LinkedBlockingQueue.)
-        done (atom false)
-        thread (doto (Thread.
-                      (fn []
-                        (while (not @done)
-                          (loop [exit-time (.peek exit-times)]
-                            (when (and exit-time
-                                       (>= 0 (- exit-time (System/nanoTime))))
-                              (.release semaphore)
-                              (.poll exit-times)
-                              (recur (.peek exit-times))))
-                          (let [delay (if-let [exit-time (.peek exit-times)]
-                                        (/ (- exit-time (System/nanoTime)) 1000000)
-                                        span-ms)]
-                            (when (pos? delay)
-                              (Thread/sleep delay))))))
-                 (.setDaemon true)
-                 (.start))]
-    (RateGate. n span-ms semaphore exit-times done thread)))
+        done (atom false)]
+    (RateGate. n span-ms semaphore done)))
 
 (defn rate-limit
   "Rate-limits the given function with a rate-gate. The rate-gate object
