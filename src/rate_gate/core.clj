@@ -16,8 +16,8 @@
       (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
   (tarry [_ timeout-ms timeout-val]
     (when-not @done
-      (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
-      (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
+      (if (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
+        (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000))))))
   (shutdown [_]
     (reset! done true))
   (toString [this]
