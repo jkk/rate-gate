@@ -1,5 +1,14 @@
 (ns rate-gate.core
+  (:require [clojure.core.async :as async])
   (:import (java.util.concurrent Semaphore LinkedBlockingQueue TimeUnit)))
+
+(defmacro go-after
+  "Asynchronously waits for n milliseconds, then executes body in another thread.  Returns nil."
+  [n & body]
+  `(do (async/go
+        (async/alts! [(async/timeout ~n)])
+        ~@body)
+       nil))
 
 (defprotocol PRateGate
   (open? [this])
@@ -13,15 +22,11 @@
   (tarry [_]
     (when-not @done
       (.acquire semaphore)
-      (future
-        (Thread/sleep span-ms)
-        (.release semaphore))))
+      (go-after span-ms (.release semaphore))))
   (tarry [_ timeout-ms timeout-val]
     (when-not @done
       (if (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
-        (future
-          (Thread/sleep span-ms)
-          (.release semaphore)))))
+        (go-after span-ms (.release semaphore)))))
   (shutdown [_]
     (reset! done true))
   (toString [this]
