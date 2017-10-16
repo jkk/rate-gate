@@ -56,12 +56,13 @@
 (defn rate-limit
   "Rate-limits the given function with a rate-gate. The rate-gate object
   will be attached to the function's metadata in the :rate-gates slot."
-  [f n span-ms]
-  (let [gate (rate-gate n span-ms)]
-    ^{:rate-gates (into [gate] (:rate-gates (meta f)))}
-    (fn [& args]
-      (tarry gate)
-      (apply f args))))
+  ([f n span-ms]
+   (rate-limit f (rate-gate n span-ms)))
+  ([f gate]
+   ^{:rate-gates (into [gate] (:rate-gates (meta f)))}
+   (fn [& args]
+     (tarry gate)
+     (apply f args))))
 
 (defn un-limit
   "Clears any rate-gates from a function previously passed to rate-limit"
