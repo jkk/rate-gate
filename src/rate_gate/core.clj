@@ -1,23 +1,32 @@
 (ns rate-gate.core
+  (:require [clojure.core.async :as async])
   (:import (java.util.concurrent Semaphore LinkedBlockingQueue TimeUnit)))
+
+(defmacro go-after
+  "Asynchronously waits for n milliseconds, then executes body in another thread.  Returns nil."
+  [n & body]
+  `(do (async/go
+        (async/alts! [(async/timeout ~n)])
+        ~@body)
+       nil))
 
 (defprotocol PRateGate
   (open? [this])
   (tarry [this] [this timeout-ms timeout-val])
   (shutdown [this]))
 
-(deftype RateGate [n span-ms semaphore exit-times done thread]
+(deftype RateGate [n span-ms semaphore done]
   PRateGate
   (open? [_]
     (pos? (.availablePermits semaphore)))
   (tarry [_]
     (when-not @done
       (.acquire semaphore)
-      (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
+      (go-after span-ms (.release semaphore))))
   (tarry [_ timeout-ms timeout-val]
     (when-not @done
-      (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
-      (.offer exit-times (+ (System/nanoTime) (* span-ms 1000000)))))
+      (if (.tryAcquire semaphore timeout-ms TimeUnit/MILLISECONDS)
+        (go-after span-ms (.release semaphore)))))
   (shutdown [_]
     (reset! done true))
   (toString [this]
@@ -38,40 +47,22 @@
 (defn rate-gate
   "Creates a rate-gate object which can be used to limit the rate at which
   actions occur. Calling deref on the object will block until things are
-  allowed to proceed (unless a timeout is also passed to deref). Spawns a
-  management thread which can be shut down by calling the object with no
-  arguments."
+  allowed to proceed (unless a timeout is also passed to deref)."
   [n span-ms]
   (let [semaphore (Semaphore. n true)
-        exit-times (LinkedBlockingQueue.)
-        done (atom false)
-        thread (doto (Thread.
-                      (fn []
-                        (while (not @done)
-                          (loop [exit-time (.peek exit-times)]
-                            (when (and exit-time
-                                       (>= 0 (- exit-time (System/nanoTime))))
-                              (.release semaphore)
-                              (.poll exit-times)
-                              (recur (.peek exit-times))))
-                          (let [delay (if-let [exit-time (.peek exit-times)]
-                                        (/ (- exit-time (System/nanoTime)) 1000000)
-                                        span-ms)]
-                            (when (pos? delay)
-                              (Thread/sleep delay))))))
-                 (.setDaemon true)
-                 (.start))]
-    (RateGate. n span-ms semaphore exit-times done thread)))
+        done (atom false)]
+    (RateGate. n span-ms semaphore done)))
 
 (defn rate-limit
   "Rate-limits the given function with a rate-gate. The rate-gate object
   will be attached to the function's metadata in the :rate-gates slot."
-  [f n span-ms]
-  (let [gate (rate-gate n span-ms)]
-    ^{:rate-gates (into [gate] (:rate-gates (meta f)))}
-    (fn [& args]
-      (tarry gate)
-      (apply f args))))
+  ([f n span-ms]
+   (rate-limit f (rate-gate n span-ms)))
+  ([f gate]
+   ^{:rate-gates (into [gate] (:rate-gates (meta f)))}
+   (fn [& args]
+     (tarry gate)
+     (apply f args))))
 
 (defn un-limit
   "Clears any rate-gates from a function previously passed to rate-limit"
